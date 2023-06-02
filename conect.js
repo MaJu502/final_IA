@@ -1,30 +1,24 @@
 const io = require('socket.io-client')
-const URL = "http://192.168.1.134:4000"
+const URL = "http://192.168.1.104:4000"
 const socket = io(URL)
 const tournamentID = 142857
 
-const ROWSIZE = 7; // Tamaño de la fila del tablero
-const ROWCOUNT = 6; // Número de filas del tablero
+const ROWCOUNT = 6; // Número de filas en el tablero
+const ROWSIZE = 7; // Número de columnas en el tablero
 
 // Función principal para encontrar el mejor movimiento
 function EL_GENIO_DETRAS_DE_TODO(board, playerTurnID) {
   const maxDepth = 5; // Profundidad máxima para el algoritmo minimax
   const alpha = -Infinity; // Valor alfa para la poda alfa-beta
   const beta = Infinity; // Valor beta para la poda alfa-beta
-
-  // Duplicar el tablero
   const boardCopy = [...board.map((row) => [...row])];
-
-  // Obtener el índice de la columna del mejor movimiento mediante el algoritmo minimax
   const columnIndex = minimax(boardCopy, maxDepth, alpha, beta, true, playerTurnID).columnIndex;
-
   return columnIndex; // Devolver la columna del mejor movimiento
 }
 
 // Verificar si un movimiento en una columna es válido
 function is_valid_move(board, col) {
-  //return board[0][col] == 0
-  return board[ROWCOUNT-1][col] == 0;
+  return board[ROWCOUNT-1][col] === 0;
 }
 
 // Obtener los movimientos válidos en el tablero
@@ -41,65 +35,88 @@ function get_valid_moves(board) {
 }
 
 // Calcular la puntuación del tablero para un jugador dado
-function evaluar_estado_actual(board, playerTurnID) {
-  const OPO = playerTurnID === 1 ? 2 : 1; // ID del oponente
+function ScoreActual(board, playerTurnID) {
+  let OPO;
+  if (playerTurnID === 1) {
+    OPO = 2;
+  } else {
+    OPO = 1;
+  }
+
   let puntuacion = 0;
 
-  // Calcular puntuación horizontal
+
+  // Calcular puntuación en filas horizontales y columnas verticales
   for (let row = 0; row < ROWCOUNT; row++) {
-    for (let col = 0; col < 4; col++) {
-      const permutacion = [board[row][col], board[row][col + 1], board[row][col + 2], board[row][col + 3]];
-      puntuacion += evaluador(permutacion, playerTurnID, OPO);
-    }
-  }
-
-  // Calcular puntuación vertical
-  for (let row = 0; row < 3; row++) {
     for (let col = 0; col < ROWSIZE; col++) {
-      const permutacion = [board[row][col], board[row + 1][col], board[row + 2][col], board[row + 3][col]];
-      puntuacion += evaluador(permutacion, playerTurnID, OPO);
+      const permutacionHorizontal = [board[row][col], board[row][col + 1], board[row][col + 2], board[row][col + 3]];
+      const permutacionVertical = [board[row][col], board[row + 1][col], board[row + 2][col], board[row + 3][col]];
+      puntuacion += SCORER_MACHIEN(permutacionHorizontal, playerTurnID, OPO);
+      puntuacion += SCORER_MACHIEN(permutacionVertical, playerTurnID, OPO);
     }
   }
 
-  // Calcular puntuación en diagonales ascendentes
-  for (let row = 3; row < ROWCOUNT; row++) {
-    for (let col = 0; col < 4; col++) {
-      const permutacion = [board[row][col], board[row - 1][col + 1], board[row - 2][col + 2], board[row - 3][col + 3]];
-      puntuacion += evaluador(permutacion, playerTurnID, OPO);
-    }
-  }
-
-  // Calcular puntuación en diagonales descendentes
-  for (let row = 3; row < ROWCOUNT; row++) {
-    for (let col = 3; col < ROWSIZE; col++) {
-      const permutacion = [board[row][col], board[row - 1][col - 1], board[row - 2][col - 2], board[row - 3][col - 3]];
-      puntuacion += evaluador(permutacion, playerTurnID, OPO);
+  // Calcular puntuación en diagonales ascendentes y descendentes
+  for (let row = 0; row < ROWCOUNT - 3; row++) {
+    for (let col = 0; col < ROWSIZE - 3; col++) {
+      const permutacionAscendente = [board[row][col], board[row + 1][col + 1], board[row + 2][col + 2], board[row + 3][col + 3]];
+      const permutacionDescendente = [board[row + 3][col], board[row + 2][col + 1], board[row + 1][col + 2], board[row][col + 3]];
+      puntuacion += SCORER_MACHIEN(permutacionAscendente, playerTurnID, OPO);
+      puntuacion += SCORER_MACHIEN(permutacionDescendente, playerTurnID, OPO);
     }
   }
 
   return puntuacion; // Devolver la puntuación del tablero
 }
 
-// Calcular la puntuación para una combinación de fichas dada
-function evaluador(permutacion, playerTurnID, OPO) {
+
+function SCORER_MACHIEN(permutacion, playerTurnID, OPO) {
+  let puntuacion = 0;
+  const jugadorCount = contarOcurrencias(permutacion, playerTurnID);
+  const vacioCount = contarOcurrencias(permutacion, 0);
+
+  puntuacion += calcularPuntuacion(jugadorCount, vacioCount, true);
+  puntuacion -= calcularPuntuacion(contarOcurrencias(permutacion, OPO), vacioCount, false);
+
+  return puntuacion;
+}
+
+function contarOcurrencias(permutacion, valor) {
+  let count = 0;
+  for (let i = 0; i < permutacion.length; i++) {
+    if (permutacion[i] === valor) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function calcularPuntuacion(ocurrencias, vacioCount, esJugador) {
   let puntuacion = 0;
 
-  // Puntuación del jugador actual
-  if (permutacion.filter((cell) => cell === playerTurnID).length === 4) {
-    puntuacion += 100;
-  } else if (permutacion.filter((cell) => cell === playerTurnID).length === 3 && permutacion.filter((cell) => cell === 0).length === 1) {
-    puntuacion += 5;
-  } else if (permutacion.filter((cell) => cell === playerTurnID).length === 2 && permutacion.filter((cell) => cell === 0).length === 2) {
-    puntuacion += 2;
+  switch (ocurrencias) {
+    case 4:
+      puntuacion = 100 * (esJugador ? 5 : -5);
+      break;
+    case 3:
+      puntuacion = 100 * (esJugador ? 2 : -2);
+      break;
+    case 2:
+      puntuacion = 100 * (esJugador ? 1 : -1);
+      break;
+    default:
+      puntuacion = 0;
+      break;
   }
 
-  // Puntuación del oponente
-  if (permutacion.filter((cell) => cell === OPO).length === 3 && permutacion.filter((cell) => cell === 0).length === 1) {
-    puntuacion -= 4;
+  if (vacioCount === 1) {
+    puntuacion *= 2;
   }
 
-  return puntuacion; // Devolver la puntuación de la combinación
+  return puntuacion;
 }
+
+
 
 // Generar un nuevo tablero después de realizar un movimiento en una columna dada
 function generate_new_board_with_new_move(board, columnIndex, playerTurnID) {
@@ -121,7 +138,7 @@ function minimax(board, depth, alpha, beta, maximizingPlayer, playerTurnID) {
   let BIGBRAIN_MOVE = null;
 
   if (depth === 0 || valid_moves.length === 0) {
-    const puntuacion = evaluar_estado_actual(board, playerTurnID);
+    const puntuacion = ScoreActual(board, playerTurnID);
     return { puntuacion }; // Devolver la puntuación si se alcanza la profundidad máxima o no hay movimientos válidos
   }
 
@@ -174,6 +191,7 @@ function minimax(board, depth, alpha, beta, maximizingPlayer, playerTurnID) {
 }
 
 
+
 socket.on('connect', () => {
     console.log("Connected to server")
 
@@ -207,13 +225,13 @@ socket.on('ready', function(data){
     var board = data.board;
 
     // Mostrar informacion del juego
-    console.log(' >> ¡Es el turno del jugador ${playerTurnID}!')
-    console.log(" >> Estado actual del tablero:")
-    console.log(board)
+    console.log(' >> ¡Es el turno del jugador ', playerTurnID)
 
     
     // IA LOGIC
     var IA_generated_move = EL_GENIO_DETRAS_DE_TODO(board, playerTurnID);
+    
+    console.log('move >> ',IA_generated_move)
     
     
     socket.emit('play', {
@@ -233,17 +251,12 @@ socket.on('ready', function(data){
     // TODO: Your cleaning board logic here
     // Mostrar informacion del juego
     console.log(' >> ¡Es el turno del jugador ${playerTurnID}!')
-    console.log(" >> Estado actual del tablero:")
-    console.log(board)
+    console.log(' >>>> Done')
 
-    
-    // IA LOGIC
-    var IA_generated_move = EL_GENIO_DETRAS_DE_TODO(board, playerTurnID);
     
     socket.emit('player_ready', {
       tournament_id: tournamentID,
       player_turn_id: playerTurnID,
-      game_id: gameID,
-      movement: IA_generated_move
+      game_id: gameID
     });
   });
